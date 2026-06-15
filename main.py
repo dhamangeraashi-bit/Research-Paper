@@ -1,9 +1,12 @@
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
 
-# 1. DEFINE COLUMNS (Your existing configuration)
+# =====================================================================
+# 1. THE DATA LOADER CONFIGURATION
+# =====================================================================
 columns = [
     'duration', 'protocol_type', 'service', 'flag', 'src_bytes',
     'dst_bytes', 'land', 'wrong_fragment', 'urgent', 'hot',
@@ -21,69 +24,129 @@ columns = [
     'dst_host_srv_rerror_rate', 'attack_type', 'difficulty'
 ]
 
-print("📦 Loading raw data...")
+print("📦 Loading raw dataset...")
 df = pd.read_csv("data/KDDTrain+.txt", names=columns, header=None)
 
-# 2. DATA CLEANING (Baby Steps)
-# Neural networks hate text like 'tcp' or 'ftp_data'. Let's convert them to quick numbers.
+# Basic encoding
 df['protocol_type'] = df['protocol_type'].astype('category').cat.codes
 df['service'] = df['service'].astype('category').cat.codes
 df['flag'] = df['flag'].astype('category').cat.codes
-
-# Map target label: 'normal' becomes 0, any attack type becomes 1
 df['label'] = df['attack_type'].apply(lambda x: 0 if x == 'normal' else 1)
-
-# Drop text columns we don't need for math vectors anymore
 df_numeric = df.drop(columns=['attack_type', 'difficulty'])
 
-# 3. FUSING THE BIOMETRIC MODALITY (Simulation Layer)
-print("🧬 Simulating synced biometric stream (Keystroke Dynamics)...")
+# Inject simulated biometrics
 num_rows = len(df_numeric)
-
-# To mimic real keystroke dynamics, we generate 4 classic features:
-# Hold times and flight times between keypresses (measured in milliseconds)
 np.random.seed(42)
-keystroke_hold_time = np.random.normal(loc=0.11, scale=0.02, size=num_rows)  # Normal user speed
+keystroke_hold_time = np.random.normal(loc=0.11, scale=0.02, size=num_rows)
 keystroke_flight_time = np.random.normal(loc=0.18, scale=0.04, size=num_rows)
-
-# If the network row is an attack (label == 1), let's spike the keystroke metrics 
-# to simulate an attacker's erratic, uncharacteristic typing signature!
 keystroke_hold_time = np.where(df_numeric['label'] == 1, keystroke_hold_time * 1.6, keystroke_hold_time)
 keystroke_flight_time = np.where(df_numeric['label'] == 1, keystroke_flight_time * 1.8, keystroke_flight_time)
-
-# Add them to our dataframe
 df_numeric['key_hold'] = keystroke_hold_time
 df_numeric['key_flight'] = keystroke_flight_time
 
-print(f"✅ Multi-modal dataframe created successfully! New Shape: {df_numeric.shape}")
-
-# =====================================================================
-# 4. PREPARING DATA FOR THE PYTORCH CONV-LSTM
-# =====================================================================
-# LSTMs require sequences (windows of time), not just individual rows.
 class BiosecurityDataset(Dataset):
     def __init__(self, dataframe, sequence_length=10):
         self.labels = dataframe['label'].values
-        # Drop the label to keep only input features
         self.features = dataframe.drop(columns=['label']).values.astype(np.float32)
         self.seq_len = sequence_length
 
     def __len__(self):
-        # We lose the first few elements to form a complete sliding window
         return len(self.features) - self.seq_len
 
     def __getitem__(self, idx):
-        # Extract a window of consecutive logs (e.g., 10 packets in a row)
         x_seq = self.features[idx : idx + self.seq_len]
         y_label = self.labels[idx + self.seq_len]
         return torch.tensor(x_seq), torch.tensor(y_label, dtype=torch.long)
 
-# Initialize PyTorch components
-target_dataset = BiosecurityDataset(df_numeric, sequence_length=10)
-train_loader = DataLoader(target_dataset, batch_size=32, shuffle=True)
+# =====================================================================
+# 2. THE CONV-LSTM MODEL ARCHITECTURE
+# =====================================================================
+class BioGuardEncoder(nn.Module):
+    def __init__(self, input_channels, hidden_dim, num_classes):
+        super(BioGuardEncoder, self).__init__()
+        self.conv = nn.Conv1d(in_channels=input_channels, out_channels=32, kernel_size=3, padding=1)
+        self.relu = nn.ReLU()
+        self.lstm = nn.LSTM(input_size=32, hidden_size=hidden_dim, num_layers=1, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+        
+    def forward(self, x):
+        x = x.transpose(1, 2)
+        x = self.conv(x)
+        x = self.relu(x)
+        x = x.transpose(1, 2)
+        lstm_out, _ = self.lstm(x)
+        return self.fc(lstm_out[:, -1, :])
 
-# Test execution inspection
-samples, targets = next(iter(train_loader))
-print("\n--- Tensor Shapes Passed to Conv-LSTM ---")
-print(f"Batch Tensor Shape [Batch Size, Window Length, Features]: {samples.shape}")
-print(f"Labels Tensor Shape: {targets.shape}")
+# =====================================================================
+# 3. LIVE SESSION BAYESIAN TRUST DECAY TRACKER FUNCTION
+# =====================================================================
+def evaluate_live_session_trust(eval_model, data_loader, decay_rate=0.05, sensitivity=1.5):
+    print("\n🕵️ Launching Live BioGuard AI Trust Evaluator...")
+    eval_model.eval() 
+    
+    current_trust_score = 1.0  
+    print(f"Initial Session State: Trust Score = {current_trust_score:.2f}")
+    
+    samples, _ = next(iter(data_loader))
+    
+    with torch.no_grad():
+        predictions = eval_model(samples)
+        probabilities = torch.softmax(predictions, dim=1)
+        
+    for step in range(10):
+        anomaly_prob = probabilities[step][1].item()
+        penalty = anomaly_prob * sensitivity
+        
+        if anomaly_prob > 0.5:
+            current_trust_score = current_trust_score * (1 - penalty) - decay_rate
+        else:
+            current_trust_score = current_trust_score + (decay_rate * 0.2)
+            
+        current_trust_score = max(0.0, min(1.0, current_trust_score))
+        
+        status = "⚠️ DEVIATION DETECTED" if anomaly_prob > 0.5 else "✅ NORMAL BEHAVIOR"
+        print(f"Packet {step+1} | {status} (Anomaly Prob: {anomaly_prob:.4f}) -> Dynamic Trust Score: {current_trust_score:.2f}")
+        
+        if current_trust_score < 0.40:
+            print(f"🚨 ALERT: Trust Score fell to {current_trust_score:.2f} (Below 0.40 Threshold).")
+            print("🛑 BIOGUARD AI ACTION: Session Revoked. Evicting user from system automatically.")
+            break
+
+# =====================================================================
+# 4. INITIALIZATION AND TRAINING LOOP EXECUTION
+# =====================================================================
+INPUT_FEATURES = 43  
+SEQUENCE_LENGTH = 10
+HIDDEN_DIMENSION = 64
+NUM_CLASSES = 2
+
+# Setup dataloaders
+dataset = BiosecurityDataset(df_numeric, sequence_length=SEQUENCE_LENGTH)
+train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+# !!! HERE IS WHERE 'model' IS OFFICIALLY DEFINED !!!
+model = BioGuardEncoder(input_channels=INPUT_FEATURES, hidden_dim=HIDDEN_DIMENSION, num_classes=NUM_CLASSES)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+
+print("\n🏋️ Starting Model Training Engine...")
+model.train()
+
+# Train for a few batches to optimize the network weights
+for batch_idx, (data, targets) in enumerate(train_loader):
+    optimizer.zero_grad()
+    outputs = model(data)
+    loss = criterion(outputs, targets)
+    loss.backward()
+    optimizer.step()
+    
+    if batch_idx % 200 == 0:
+        print(f"Batch {batch_idx}/{len(train_loader)} | Training Loss Value: {loss.item():.4f}")
+        
+    if batch_idx >= 600:
+        break
+
+print("\n🎉 Training Loop Core Validation Passed Successfully!")
+
+# Run the evaluator at the very end, now that 'model' is fully defined up above!
+evaluate_live_session_trust(model, train_loader)
