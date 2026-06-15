@@ -26,5 +26,7 @@ attack_stream = AttackDataWrapper(attack_samples)
 
 print(" Injection complete. Passing malicious packets to ABT Evaluator...")
 
-# 4. Run the engine with high sensitivity to see it drop!
-evaluate_live_session_trust(model, attack_stream, decay_rate=0.15, sensitivity=2.0)
+# Force the evaluator to run across multiple test loops so the decay stacks up!
+for i in range(5):
+    print(f"\n--- Injected Attack Wave {i+1} ---")
+    evaluate_live_session_trust(model, attack_stream, decay_rate=0.18, sensitivity=2.5)
