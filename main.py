@@ -24,7 +24,7 @@ columns = [
     'dst_host_srv_rerror_rate', 'attack_type', 'difficulty'
 ]
 
-print("📦 Loading raw dataset...")
+print("Loading raw dataset...")
 df = pd.read_csv("data/KDDTrain+.txt", names=columns, header=None)
 
 # Basic encoding
@@ -44,6 +44,7 @@ keystroke_flight_time = np.where(df_numeric['label'] == 1, keystroke_flight_time
 df_numeric['key_hold'] = keystroke_hold_time
 df_numeric['key_flight'] = keystroke_flight_time
 
+#step 4: Create the PyTorch Dataset class
 class BiosecurityDataset(Dataset):
     def __init__(self, dataframe, sequence_length=10):
         self.labels = dataframe['label'].values
@@ -58,9 +59,9 @@ class BiosecurityDataset(Dataset):
         y_label = self.labels[idx + self.seq_len]
         return torch.tensor(x_seq), torch.tensor(y_label, dtype=torch.long)
 
-# =====================================================================
+
 # 2. THE CONV-LSTM MODEL ARCHITECTURE
-# =====================================================================
+
 class BioGuardEncoder(nn.Module):
     def __init__(self, input_channels, hidden_dim, num_classes):
         super(BioGuardEncoder, self).__init__()
@@ -77,11 +78,10 @@ class BioGuardEncoder(nn.Module):
         lstm_out, _ = self.lstm(x)
         return self.fc(lstm_out[:, -1, :])
 
-# =====================================================================
+
 # 3. LIVE SESSION BAYESIAN TRUST DECAY TRACKER FUNCTION
-# =====================================================================
 def evaluate_live_session_trust(eval_model, data_loader, decay_rate=0.05, sensitivity=1.5):
-    print("\n🕵️ Launching Live BioGuard AI Trust Evaluator...")
+    print("\n Launching Live BioGuard AI Trust Evaluator...")
     eval_model.eval() 
     
     current_trust_score = 1.0  
@@ -104,17 +104,15 @@ def evaluate_live_session_trust(eval_model, data_loader, decay_rate=0.05, sensit
             
         current_trust_score = max(0.0, min(1.0, current_trust_score))
         
-        status = "⚠️ DEVIATION DETECTED" if anomaly_prob > 0.5 else "✅ NORMAL BEHAVIOR"
+        status = "DEVIATION DETECTED" if anomaly_prob > 0.5 else " NORMAL BEHAVIOR"
         print(f"Packet {step+1} | {status} (Anomaly Prob: {anomaly_prob:.4f}) -> Dynamic Trust Score: {current_trust_score:.2f}")
         
         if current_trust_score < 0.40:
-            print(f"🚨 ALERT: Trust Score fell to {current_trust_score:.2f} (Below 0.40 Threshold).")
-            print("🛑 BIOGUARD AI ACTION: Session Revoked. Evicting user from system automatically.")
+            print(f" ALERT: Trust Score fell to {current_trust_score:.2f} (Below 0.40 Threshold).")
+            print(" BIOGUARD AI ACTION: Session Revoked. Evicting user from system automatically.")
             break
 
-# =====================================================================
-# 4. INITIALIZATION AND TRAINING LOOP EXECUTION
-# =====================================================================
+
 INPUT_FEATURES = 43  
 SEQUENCE_LENGTH = 10
 HIDDEN_DIMENSION = 64
@@ -124,15 +122,15 @@ NUM_CLASSES = 2
 dataset = BiosecurityDataset(df_numeric, sequence_length=SEQUENCE_LENGTH)
 train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
 
-# !!! HERE IS WHERE 'model' IS OFFICIALLY DEFINED !!!
+
 model = BioGuardEncoder(input_channels=INPUT_FEATURES, hidden_dim=HIDDEN_DIMENSION, num_classes=NUM_CLASSES)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
-print("\n🏋️ Starting Model Training Engine...")
+print("\n Starting Model Training Engine...")
 model.train()
 
-# Train for a few batches to optimize the network weights
+# Train for a few batches to check the network weights
 for batch_idx, (data, targets) in enumerate(train_loader):
     optimizer.zero_grad()
     outputs = model(data)
@@ -146,7 +144,7 @@ for batch_idx, (data, targets) in enumerate(train_loader):
     if batch_idx >= 600:
         break
 
-print("\n🎉 Training Loop Core Validation Passed Successfully!")
+print("\n Training Loop Core Validation Passed Successfully!")
 
 # Run the evaluator at the very end, now that 'model' is fully defined up above!
 evaluate_live_session_trust(model, train_loader)
