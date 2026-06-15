@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from main import train_loader  # Dropped X_train to prevent the import error
 
-print("🧪 Starting my ablation study baseline test...")
+print(" Starting my ablation study baseline test...")
 print("Checking how a basic model performs without our Conv-LSTM layers.")
 
 class BasicStudentModel(nn.Module):
