@@ -1,4 +1,4 @@
-Adaptive Bayesian Trust Scoring (ABT) Framework 
+**Adaptive Bayesian Trust Scoring (ABT) Framework -**
 Welcome to the repository for my computer science engineering research project. As a first-year student, I built this framework to tackle a major challenge in security: detecting and stopping session hijacking attacks in real-time.
 
 The Core Problem
